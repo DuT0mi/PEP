@@ -1,0 +1,8 @@
+4 taszkot hoztam létre: a játék alaphelyzetbe állításához (prvTskINIT), a kijelző frissítéséhez (prvTskDisp), irányváltó karakter vételéhez (prvTskDir) és a játék végén a pontok villogtatására, majd a játék újrakezdésére (prvTskFlashing).
+
+Init és Flashing a legmagasabb prioritásúak (idle + 3), ezek ütemezése alaphelyzetben RounRobin. 
+Az alkalmazás indításakor vagy Init vagy Flashing jut érvényre. Flashing rögtön felfüggesztené futását, így érvényre jut Init. 
+Init felfüggeszti magát, majd a Disp és Dir közül a magsabb prioritású Disp jut érvényre. Minden kijelzési periódus után várakozó állapotba kerül egy másodpercre (vTskDelay(confingRATE_TICK_HZ)).
+Ekkor érvényre juthat Dir, ha UART vétel történt, azt egy globális változóban jelzi Dips-nek, mikor kiolvasta a vett karaktert, egy szemafort állít be, hogy az esetleg rögtön ezután érkező UART vétel ne írja felül a már kiolvasott irányt.
+A feléledő Disp a vett karakter alapján frissíti a kijelzőt, majd elengedi a szemafort, ezzel biztosítva, hogy egy kijelző periódus alatt csak egy vezérlő karaktert olvastunk be.
+A játék végén (kígyó magába harap -> snake.isAlive = 0) Disp feléleszti a magasabb prioritású Flashing taszkot, ez párat villog, majd feléeszti Init-et.
