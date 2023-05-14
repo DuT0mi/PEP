@@ -47,27 +47,19 @@ bool SymbolFlip;
 /***************************************************************************//**
  * FreeRTOS task
  ******************************************************************************/
-TaskHandle_t handleTimer;
+TaskHandle_t handleFlashing;
+TaskHandle_t handleInit;
 SemaphoreHandle_t guard;
 
 //Egyszer lefutó inicializáló tasz, lefutás után törli magát
 void prvTskINIT(void){
-    CHIP_Init();
-    uartinit();
-    TimerInit();
-    /* Enable LCD without voltage boost */
-    SegmentLCD_Init(false);
-    /* If first word of user data page is non-zero, enable Energy Profiler trace */
-
-    /* Infinite loop */
-    SegmentLCD_AllOff();
-
-    SymbolFlip=false;
-
+  while(1){
     mysnake=SnakeInit(mysnake);  //pr�ba, hogy megy-e a kirajzol�s stb.
     food=PlaceFood(mysnake);  //random helyre most lerakok egy kaj�t
+    SymbolFlip=false;
 
-    vTaskDelete(NULL);
+    vTaskSuspend(NULL);
+  }
 }
 
 /*Alacsonyabb prioritású taszk, vizsgálja, hogy érkezett-e karakter, lefoglal egy
@@ -78,7 +70,8 @@ void prvTskDir(void){
   while(1){
       if(UARTflag) {
         UARTflag=false;
-        UARThappened=true;
+        UARThappened=true;                  //ennek a szemafor beállítás előtt kell lennie, ekkor nem jut érvénye
+                                            //egy kijelző periódus alatt érkezett második karakter későbbi periódusban sem
         xSemaphoreTake(guard, portMAX_DELAY);
         UARTvalue=USART_RxDataGet(UART0); //itt NEM szabad kiolvasni
         USART_Tx(UART0, UARTvalue);
@@ -108,9 +101,20 @@ void prvTskDisp(void){
 
        }
        else {
+           vTaskResume(handleFlashing);     //ha vége a játéknak, felébreszti
+                                            //a magasabb prioritású villogtató taszkot
+       }
+  }
+}
+
+void prvTskFlashing(void){
          //mysnake.size=0;
+  while(1){
+         vTaskSuspend(handleFlashing);
          SegmentLCD_AllOff();
-         /*Itt ugye a pontokat villogatatom, lehetne várakozásos ütemezés*/
+         int i = 0;
+
+         while(i < 5){
          if(SymbolFlip) {
            SegmentLCD_Symbol(LCD_SYMBOL_DP2, 1);
            SegmentLCD_Symbol(LCD_SYMBOL_DP3, 1);
@@ -128,11 +132,13 @@ void prvTskDisp(void){
            SymbolFlip=true;
          }
          SegmentLCD_Number(mysnake.size);
+         vTaskDelay(configTICK_RATE_HZ);
+         i++;
        }
-      }
-
-
+         USART_Tx(UART0, 0x31);
+       vTaskResume(handleInit);
   }
+}
 
 
 
@@ -141,6 +147,15 @@ void prvTskDisp(void){
  ******************************************************************************/
 void app_init(void)
 {
+  CHIP_Init();
+  uartinit();
+  TimerInit();
+  /* Enable LCD without voltage boost */
+  SegmentLCD_Init(false);
+  /* If first word of user data page is non-zero, enable Energy Profiler trace */
+
+  SegmentLCD_AllOff();
+
 /*
   SegmentLCD_Init(false);
 
@@ -165,7 +180,7 @@ void app_init(void)
         configMINIMAL_STACK_SIZE,
         NULL,
         tskIDLE_PRIORITY + 3, // in freetros the num is bigger than the priority too
-        NULL);
+        &handleInit);
 
   xTaskCreate(
          prvTskDir, // function pointer, is just the function's name without brackets and params
@@ -181,7 +196,15 @@ void app_init(void)
          configMINIMAL_STACK_SIZE,
          NULL,
          tskIDLE_PRIORITY + 2, // in freetros the num is bigger than the priority too
-         &handleTimer);
+         NULL);
+
+  xTaskCreate(
+        prvTskFlashing, // function pointer, is just the function's name without brackets and params
+        "",
+        configMINIMAL_STACK_SIZE,
+        NULL,
+        tskIDLE_PRIORITY + 3, // in freetros the num is bigger than the priority too
+        &handleFlashing);
 }
 
 
